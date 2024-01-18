@@ -42,22 +42,27 @@ class CompositeTransform(Transform):
         self._transforms = nn.ModuleList(transforms)
 
     @staticmethod
-    def _cascade(inputs, funcs, context):
+    def _cascade(inputs, funcs, context, dimension_wise=False):
         batch_size = inputs.shape[0]
         outputs = inputs
-        total_logabsdet = inputs.new_zeros(batch_size)
+        
+        if dimension_wise:
+            total_logabsdet = torch.zeros_like(inputs)
+        else:
+            total_logabsdet = inputs.new_zeros(batch_size)
+        
         for func in funcs:
-            outputs, logabsdet = func(outputs, context)
+            outputs, logabsdet = func(outputs, context, dimension_wise=dimension_wise)
             total_logabsdet += logabsdet
         return outputs, total_logabsdet
 
-    def forward(self, inputs, context=None):
+    def forward(self, inputs, context=None, dimension_wise=False):
         funcs = self._transforms
-        return self._cascade(inputs, funcs, context)
+        return self._cascade(inputs, funcs, context, dimension_wise)
 
-    def inverse(self, inputs, context=None):
+    def inverse(self, inputs, context=None, dimension_wise=False):
         funcs = (transform.inverse for transform in self._transforms[::-1])
-        return self._cascade(inputs, funcs, context)
+        return self._cascade(inputs, funcs, context, dimension_wise)
 
 
 class MultiscaleCompositeTransform(Transform):
@@ -224,8 +229,8 @@ class InverseTransform(Transform):
         super().__init__()
         self._transform = transform
 
-    def forward(self, inputs, context=None):
-        return self._transform.inverse(inputs, context)
+    def forward(self, inputs, context=None, dimension_wise=False):
+        return self._transform.inverse(inputs, context, dimension_wise=dimension_wise)
 
-    def inverse(self, inputs, context=None):
-        return self._transform(inputs, context)
+    def inverse(self, inputs, context=None, dimension_wise=False):
+        return self._transform(inputs, context, dimension_wise=dimension_wise)

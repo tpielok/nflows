@@ -146,27 +146,35 @@ class Sigmoid(Transform):
             temperature = torch.Tensor([temperature])
             self.register_buffer('temperature', temperature)
 
-    def forward(self, inputs, context=None):
+    def forward(self, inputs, context=None, dimension_wise=False):
         inputs = self.temperature * inputs
         outputs = torch.sigmoid(inputs)
-        logabsdet = torchutils.sum_except_batch(
-            torch.log(self.temperature) - F.softplus(-inputs) - F.softplus(inputs)
+        logabsdet = torch.log(self.temperature) - F.softplus(-inputs) - F.softplus(inputs)
+        logabsdetsum = torchutils.sum_except_batch(
+            logabsdet
         )
-        return outputs, logabsdet
+        
+        if dimension_wise:
+            return outputs, logabsdet
+        else:
+            return outputs, logabsdetsum
 
-    def inverse(self, inputs, context=None):
+    def inverse(self, inputs, context=None, dimension_wise=False):
         if torch.min(inputs) < 0 or torch.max(inputs) > 1:
             raise InputOutsideDomain()
 
         inputs = torch.clamp(inputs, self.eps, 1 - self.eps)
 
         outputs = (1 / self.temperature) * (torch.log(inputs) - torch.log1p(-inputs))
-        logabsdet = -torchutils.sum_except_batch(
-            torch.log(self.temperature)
-            - F.softplus(-self.temperature * outputs)
-            - F.softplus(self.temperature * outputs)
+        
+        logabsdet = -torch.log(self.temperature) - F.softplus(-self.temperature * outputs) - F.softplus(self.temperature * outputs)
+        
+        if dimension_wise:
+            return outputs, logabsdet
+        else:
+            return outputs, torchutils.sum_except_batch(
+            logabsdet
         )
-        return outputs, logabsdet
 
 
 class Logit(InverseTransform):

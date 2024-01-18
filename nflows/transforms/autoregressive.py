@@ -35,29 +35,29 @@ class AutoregressiveTransform(Transform):
         super(AutoregressiveTransform, self).__init__()
         self.autoregressive_net = autoregressive_net
 
-    def forward(self, inputs, context=None):
+    def forward(self, inputs, context=None, dimension_wise=False):
         autoregressive_params = self.autoregressive_net(inputs, context)
-        outputs, logabsdet = self._elementwise_forward(inputs, autoregressive_params)
+        outputs, logabsdet = self._elementwise_forward(inputs, autoregressive_params, dimension_wise)
         return outputs, logabsdet
 
-    def inverse(self, inputs, context=None):
+    def inverse(self, inputs, context=None, dimension_wise=False):
         num_inputs = int(np.prod(inputs.shape[1:]))
         outputs = torch.zeros_like(inputs)
         logabsdet = None
         for _ in range(num_inputs):
             autoregressive_params = self.autoregressive_net(outputs, context)
             outputs, logabsdet = self._elementwise_inverse(
-                inputs, autoregressive_params
+                inputs, autoregressive_params, dimension_wise
             )
         return outputs, logabsdet
 
     def _output_dim_multiplier(self):
         raise NotImplementedError()
 
-    def _elementwise_forward(self, inputs, autoregressive_params):
+    def _elementwise_forward(self, inputs, autoregressive_params, dimension_wise=False):
         raise NotImplementedError()
 
-    def _elementwise_inverse(self, inputs, autoregressive_params):
+    def _elementwise_inverse(self, inputs, autoregressive_params, dimension_wise=False):
         raise NotImplementedError()
 
 
@@ -367,7 +367,8 @@ class MaskedPiecewiseCubicAutoregressiveTransform(AutoregressiveTransform):
     def _output_dim_multiplier(self):
         return self.num_bins * 2 + 2
 
-    def _elementwise(self, inputs, autoregressive_params, inverse=False):
+    def _elementwise(self, inputs, autoregressive_params, inverse=False, 
+                     dimension_wise=False):
         batch_size = inputs.shape[0]
 
         transform_params = autoregressive_params.view(
@@ -392,7 +393,11 @@ class MaskedPiecewiseCubicAutoregressiveTransform(AutoregressiveTransform):
             unnorm_derivatives_right=unnorm_derivatives_right,
             inverse=inverse,
         )
-        return outputs, torchutils.sum_except_batch(logabsdet)
+        
+        if dimension_wise:
+            return outputs, torchutils.sum_except_batch(logabsdet)
+        else:
+            return outputs, logabsdet
 
     def _elementwise_forward(self, inputs, autoregressive_params):
         return self._elementwise(inputs, autoregressive_params)
@@ -450,7 +455,9 @@ class MaskedPiecewiseRationalQuadraticAutoregressiveTransform(AutoregressiveTran
         else:
             raise ValueError
 
-    def _elementwise(self, inputs, autoregressive_params, inverse=False):
+    def _elementwise(self, inputs, autoregressive_params, inverse=False,
+                     dimension_wise=False):
+        
         batch_size, features = inputs.shape[0], inputs.shape[1]
 
         transform_params = autoregressive_params.view(
@@ -486,13 +493,17 @@ class MaskedPiecewiseRationalQuadraticAutoregressiveTransform(AutoregressiveTran
             **spline_kwargs
         )
 
-        return outputs, torchutils.sum_except_batch(logabsdet)
+        if dimension_wise:
+            return outputs, logabsdet
+        else:
+            return outputs, torchutils.sum_except_batch(logabsdet)
 
-    def _elementwise_forward(self, inputs, autoregressive_params):
-        return self._elementwise(inputs, autoregressive_params)
+    def _elementwise_forward(self, inputs, autoregressive_params, dimension_wise=False):
+        return self._elementwise(inputs, autoregressive_params, dimension_wise=dimension_wise)
 
-    def _elementwise_inverse(self, inputs, autoregressive_params):
-        return self._elementwise(inputs, autoregressive_params, inverse=True)
+    def _elementwise_inverse(self, inputs, autoregressive_params, dimension_wise=False):
+        return self._elementwise(inputs, autoregressive_params, inverse=True, 
+                                 dimension_wise=dimension_wise)
 
 
 def main():
